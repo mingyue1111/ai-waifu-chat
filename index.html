@@ -238,10 +238,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     (function() {
-      // ==================== 🔧 你的 Supabase 配置（已填好） ====================
+      // ==================== 你的 Supabase 配置（已填好） ====================
       const SUPABASE_URL = 'https://llesxnxckovgoauxttjh.supabase.co';
       const SUPABASE_KEY = 'sb_publishable_Xw2AS1s8k2TLyWGRKzwu6w_LgxivHNt';
-      // ========================================================================
+      // ====================================================================
 
       const ROOM_ID = 'ai_waifu_room';
       const DEEPSEEK_BASE = 'https://api.deepseek.com/v1';
@@ -317,7 +317,8 @@
         updateConnectionState(true);
         loadMessages();
         subscribeToMessages();
-        updatePresence();
+        startPresenceHeartbeat();
+        startPresenceCounter();
       }
 
       async function loadMessages() {
@@ -365,12 +366,14 @@
           timestamp: msgObj.timestamp,
           role_owner: msgObj.roleOwner || null
         }]);
-        if (error) console.error('发送失败:', error);
+        if (error) {
+          console.error('发送失败:', error);
+          showToast('消息发送失败：' + error.message);
+        }
       }
 
       function registerRole(name, persona) {
         if (!supabase) return;
-        // 角色注册通过广播通知
         publishMessage({
           sender: currentUser.username,
           text: JSON.stringify({ name, persona, owner: currentUser.username }),
@@ -379,29 +382,27 @@
         });
       }
 
-      function updatePresence() {
+      // 在线状态心跳：定期更新 presences 表
+      function startPresenceHeartbeat() {
         setInterval(async () => {
           if (!supabase || !currentUser) return;
-          // 使用轻量 upsert 表示在线
-          await supabase.from('messages').upsert([{
-            room_id: ROOM_ID + '_presence',
-            id: currentUser.username,
-            sender: currentUser.username,
-            text: 'online',
-            type: 'presence',
-            timestamp: Date.now()
-          }], { onConflict: 'id' });
+          await supabase.from('presences').upsert({
+            username: currentUser.username,
+            last_seen: Date.now()
+          }, { onConflict: 'username' });
         }, 8000);
+      }
 
+      // 统计在线人数
+      function startPresenceCounter() {
         setInterval(async () => {
+          if (!supabase) return;
           const { data } = await supabase
-            .from('messages')
-            .select('sender')
-            .eq('room_id', ROOM_ID + '_presence')
-            .eq('type', 'presence')
-            .gte('timestamp', Date.now() - 15000);
-          const uniqueUsers = new Set(data?.map(d => d.sender) || []);
-          onlineCount.textContent = `🟢 ${uniqueUsers.size || 1} 在线`;
+            .from('presences')
+            .select('username')
+            .gte('last_seen', Date.now() - 15000);
+          const count = data ? data.length : 0;
+          onlineCount.textContent = `🟢 ${count || 1} 在线`;
         }, 10000);
       }
 
