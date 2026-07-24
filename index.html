@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <title>AI老婆聊天室 · 管理员统一API</title>
+  <style>
+    :root {
+      --bg: #1a1d23;
+      --surface: #22252e;
+      --surface-light: #2a2d37;
+      --primary: #6c8cff;
+      --primary-soft: #4a5fcf;
+      --danger: #e0556a;
+      --text: #e8e9ef;
+      --text-secondary: #9a9da8;
+      --bubble-user: #2f3b54;
+      --bubble-ai: #3c1e4a;
+      --border: #363a45;
+      --radius: 16px;
+      --radius-xs: 8px;
+      --font: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font); background: var(--bg); color: var(--text);
+      height: 100vh; width: 100vw; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .screen { display: none; width: 100%; height: 100%; flex-direction: column; }
+    .screen.active { display: flex; }
+
+    .auth-box {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 2.5rem 2rem; width: 90%; max-width: 400px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+      display: flex; flex-direction: column; gap: 1.2rem; margin: auto;
+    }
+    .auth-box h2 { font-size: 1.6rem; text-align: center; color: #fff; }
+    .auth-box input {
+      width: 100%; padding: 0.85rem; border-radius: var(--radius-xs);
+      border: 1.5px solid var(--border); background: var(--surface-light);
+      color: var(--text); font-size: 0.95rem; outline: none;
+    }
+    .auth-box input:focus { border-color: var(--primary); }
+    .btn {
+      padding: 0.85rem; border: none; border-radius: var(--radius-xs);
+      font-weight: 600; font-size: 1rem; cursor: pointer; transition: 0.2s;
+      letter-spacing: 0.3px; font-family: var(--font);
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-soft); }
+    .btn-outline { background: transparent; border: 1.5px solid var(--border); color: var(--text); }
+    .btn-outline:hover { background: var(--surface-light); }
+    .link-text { color: var(--primary); cursor: pointer; font-weight: 500; }
+    .error-msg { color: var(--danger); font-size: 0.8rem; text-align: center; min-height: 1rem; }
+
+    .chat-layout { flex: 1; display: flex; overflow: hidden; }
+    .main-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .top-bar {
+      padding: 0.8rem 1.2rem; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px; background: var(--surface);
+      cursor: default;
+    }
+    .top-bar .room-title { font-weight: 700; font-size: 1.1rem; flex: 1; }
+    .online-count { font-size: 0.8rem; color: var(--text-secondary); background: var(--surface-light); padding: 2px 10px; border-radius: 20px; }
+    .sidebar-right {
+      width: 300px; min-width: 280px; background: var(--surface-light);
+      border-left: 1px solid var(--border); display: flex; flex-direction: column;
+      overflow-y: auto; padding: 1.2rem; gap: 1rem;
+    }
+    @media (max-width: 768px) {
+      .sidebar-right { display: none; position: absolute; right: 0; top: 0; bottom: 0; z-index: 20; width: 85%; max-width: 300px; }
+      .sidebar-right.open { display: flex; }
+    }
+    .messages-container { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+    .message { display: flex; gap: 8px; max-width: 85%; animation: fadeIn 0.25s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .message.user { align-self: flex-end; flex-direction: row-reverse; }
+    .message.ai { align-self: flex-start; }
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%; display: flex;
+      align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;
+      color: #fff; flex-shrink: 0;
+    }
+    .message.user .avatar { background: #4a5fcf; }
+    .message.ai .avatar { background: #e0557a; }
+    .bubble {
+      padding: 0.7rem 1rem; border-radius: 18px; font-size: 0.92rem;
+      line-height: 1.5; word-break: break-word;
+      background: var(--bubble-user); color: #dfe3f0;
+    }
+    .message.ai .bubble { background: var(--bubble-ai); color: #f8e0ff; }
+    .meta { font-size: 0.65rem; color: var(--text-secondary); margin: 0 0.2rem; display: flex; gap: 6px; align-items: center; }
+    .message.user .meta { justify-content: flex-end; }
+    .typing-indicator { font-size: 0.8rem; color: var(--text-secondary); font-style: italic; padding: 0.5rem; }
+
+    .input-area { padding: 0.8rem 1rem; border-top: 1px solid var(--border); display: flex; gap: 10px; background: var(--surface); }
+    .input-area textarea {
+      flex: 1; background: var(--surface-light); border: 1.5px solid var(--border);
+      border-radius: 24px; padding: 0.65rem 1.2rem; color: var(--text);
+      font-size: 0.9rem; resize: none; outline: none; max-height: 110px; font-family: var(--font);
+    }
+    .input-area textarea:focus { border-color: var(--primary); }
+    .send-btn {
+      width: 42px; height: 42px; border-radius: 50%; background: var(--primary);
+      border: none; color: #fff; font-size: 1.2rem; cursor: pointer; transition: 0.2s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .send-btn:hover { background: var(--primary-soft); }
+    .send-btn:disabled { background: #444; cursor: not-allowed; }
+
+    .sidebar-right h3 { font-size: 1rem; font-weight: 600; color: #fff; }
+    .sidebar-right label { font-size: 0.8rem; color: var(--text-secondary); }
+    .sidebar-right input, .sidebar-right textarea, .sidebar-right select {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius-xs); padding: 0.65rem; color: var(--text);
+      font-size: 0.85rem; outline: none; margin-top: 0.2rem; font-family: var(--font);
+    }
+    .sidebar-right input:focus, .sidebar-right textarea:focus, .sidebar-right select:focus { border-color: var(--primary); }
+    .btn-small {
+      padding: 0.4rem 0.8rem; border-radius: var(--radius-xs);
+      background: var(--primary); color: #fff; border: none; cursor: pointer; font-size: 0.8rem;
+    }
+    .btn-small:hover { background: var(--primary-soft); }
+    .admin-badge {
+      display: inline-block; background: #ff9800; color: #fff; padding: 2px 8px;
+      border-radius: 10px; font-size: 0.7rem; font-weight: 700; margin-left: 6px;
+    }
+    .config-note { font-size: 0.7rem; color: var(--text-secondary); margin-top: -0.5rem; line-height: 1.4; }
+    .close-sidebar { display: none; background: none; border: none; color: #fff; font-size: 1.2rem; cursor: pointer; align-self: flex-end; }
+    @media (max-width: 768px) { .close-sidebar { display: block; } }
+
+    .toast {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      background: #333; color: #fff; padding: 0.7rem 1.5rem; border-radius: 20px;
+      font-size: 0.85rem; z-index: 100; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+
+    /* 管理员弹窗 (居中) */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6); z-index: 50;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-box {
+      background: var(--surface); border-radius: var(--radius); padding: 2rem;
+      width: 90%; max-width: 420px; display: flex; flex-direction: column; gap: 1rem;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+    }
+    .modal-box h3 { font-size: 1.2rem; color: #fff; }
+    .model-row { display: flex; gap: 0.5rem; align-items: flex-end; }
+    .model-row select { flex: 1; }
+  </style>
+</head>
+<body>
+  <div class="toast" id="toast"></div>
+
+  <!-- 登录/注册界面 -->
+  <div class="screen active" id="authScreen">
+    <div class="auth-box">
+      <h2>💖 AI老婆聊天室</h2>
+      <p style="text-align:center; color:var(--text-secondary);">创建专属AI · 管理员统一API</p>
+      <input type="text" id="usernameInput" placeholder="用户名" maxlength="15">
+      <input type="password" id="passwordInput" placeholder="密码" maxlength="30">
+      <div class="error-msg" id="authError"></div>
+      <button class="btn btn-primary" id="loginBtn">登 录</button>
+      <button class="btn btn-outline" id="registerBtn">注 册</button>
+      <div style="text-align:center; font-size:0.85rem;">
+        没有账号？<span class="link-text" id="toggleToRegister">立即注册</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主聊天界面 -->
+  <div class="screen" id="chatScreen">
+    <div class="chat-layout">
+      <div class="main-panel">
+        <div class="top-bar" id="topBar">
+          <span class="room-title">🌐 AI老婆聊天室</span>
+          <span class="online-count" id="onlineCount">🟢 在线</span>
+          <button class="btn-small" id="menuBtn">⚙️ 我的AI</button>
+          <button class="btn-small" id="logoutBtn">🚪</button>
+        </div>
+        <div class="messages-container" id="messagesContainer"></div>
+        <div class="input-area">
+          <textarea id="messageInput" rows="1" placeholder="输入消息，@AI名字召唤老婆~" maxlength="800"></textarea>
+          <button class="send-btn" id="sendBtn">➤</button>
+        </div>
+      </div>
+      <!-- 右侧设置面板 -->
+      <div class="sidebar-right" id="sidebarRight">
+        <button class="close-sidebar" id="closeSidebarBtn">✕</button>
+        <div id="userPanel">
+          <h3>💖 我的AI角色</h3>
+          <label>角色名字</label>
+          <input type="text" id="myRoleName" placeholder="例如：小美" maxlength="10">
+          <label>人设 / System Prompt</label>
+          <textarea id="myRolePersona" rows="3" placeholder="例如：温柔可爱的女友..."></textarea>
+          <button class="btn-small" id="saveRoleBtn">💾 保存我的AI</button>
+          <p style="font-size:0.7rem; color:var(--text-secondary); margin-top:0.5rem;">💡 保存后，别人@你的AI即可召唤</p>
+          <div class="role-list" id="roleList">
+            <strong>已注册AI角色：</strong>
+          </div>
+        </div>
+        <div id="adminIndicator" style="display:none; margin-top:1rem; padding:0.5rem; background:var(--bg); border-radius:8px;">
+          <span style="color:#ff9800;">👑 管理员模式已激活</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 管理员隐藏弹窗 -->
+  <div class="modal-overlay hidden" id="adminModal">
+    <div class="modal-box">
+      <h3>👑 管理员设置 <span class="admin-badge">隐藏</span></h3>
+      <label>API Key</label>
+      <input type="password" id="adminApiKey" placeholder="sk-...">
+      <label>Base URL</label>
+      <input type="text" id="adminBaseUrl" placeholder="https://api.deepseek.com/v1" value="https://api.deepseek.com/v1">
+      <label>模型</label>
+      <div class="model-row">
+        <select id="adminModelSelect"></select>
+        <button class="btn-small" id="fetchModelsBtn">获取模型</button>
+      </div>
+      <input type="text" id="adminModelManual" placeholder="或手动输入模型名" style="margin-top:0.2rem;">
+      <button class="btn btn-primary" id="saveAdminBtn">💾 启动管理员模式</button>
+      <button class="btn btn-outline" id="closeAdminBtn">取消</button>
+      <p class="config-note">⚠️ 仅管理员可设置。Key保存在本地，AI处理由此浏览器完成。</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gun@0.2020.1237/gun.min.js"></script>
+  <script>
+    (function() {
+      // ==================== 常量 ====================
+      const ROOM_ID = 'ai_waifu_room_final';
+      const DEEPSEEK_BASE = 'https://api.deepseek.com/v1';
+      const DEEPSEEK_MODEL = 'deepseek-chat';
+      const ADMIN_GESTURE_SEQUENCE = ['left','left','left','right','right','right']; // 左键3次，右键3次
+      const STORAGE_USERS = 'waifu_final_users';
+      const STORAGE_CURRENT = 'waifu_final_current';
+      const STORAGE_ADMIN = 'waifu_final_admin';
+      const STORAGE_MY_ROLE = 'waifu_final_my_role';
+
+      const $ = (s) => document.querySelector(s);
+      const authScreen = $('#authScreen');
+      const chatScreen = $('#chatScreen');
+      const messagesContainer = $('#messagesContainer');
+      const messageInput = $('#messageInput');
+      const sendBtn = $('#sendBtn');
+      const onlineCount = $('#onlineCount');
+      const sidebarRight = $('#sidebarRight');
+      const menuBtn = $('#menuBtn');
+      const topBar = $('#topBar');
+      const adminModal = $('#adminModal');
+      const adminIndicator = $('#adminIndicator');
+      const roleListDiv = $('#roleList');
+      const toast = $('#toast');
+
+      let currentUser = null;
+      let isAdmin = false; // 当前浏览器是否为管理员
+      let adminConfig = { apiKey: '', baseUrl: DEEPSEEK_BASE, model: DEEPSEEK_MODEL };
+      let gun = null;
+      let messageCache = new Map();
+      let allRoles = {}; // { roleName: { owner, persona } }
+      let repliedMessages = new Set();
+
+      // 手势检测
+      let gestureBuffer = [];
+      let gestureTimer = null;
+
+      // ==================== 工具 ====================
+      function showToast(msg, duration=2200) {
+        toast.textContent = msg; toast.classList.add('show');
+        clearTimeout(toast._timeout);
+        toast._timeout = setTimeout(() => toast.classList.remove('show'), duration);
+      }
+      function getUsers() { try { return JSON.parse(localStorage.getItem(STORAGE_USERS)) || {}; } catch { return {}; } }
+      function saveUsers(u) { localStorage.setItem(STORAGE_USERS, JSON.stringify(u)); }
+      function loadCurrentUser() { try { return JSON.parse(localStorage.getItem(STORAGE_CURRENT)); } catch { return null; } }
+      function saveCurrentUser(u) { localStorage.setItem(STORAGE_CURRENT, JSON.stringify(u)); }
+      function loadAdminConfig() {
+        try { const c = JSON.parse(localStorage.getItem(STORAGE_ADMIN)); if (c) adminConfig = c; } catch {}
+      }
+      function saveAdminConfig() { localStorage.setItem(STORAGE_ADMIN, JSON.stringify(adminConfig)); }
+      function loadMyRole() { try { return JSON.parse(localStorage.getItem(STORAGE_MY_ROLE)); } catch { return null; } }
+      function saveMyRole(role) { localStorage.setItem(STORAGE_MY_ROLE, JSON.stringify(role)); }
+      function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+      function scrollToBottom(instant) {
+        if (instant) messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        else requestAnimationFrame(() => { messagesContainer.scrollTop = messagesContainer.scrollHeight; });
+      }
+      function isNearBottom() { return messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 90; }
+
+      // ==================== 管理员手势检测 ====================
+      function setupGestureDetection() {
+        topBar.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          const btn = e.button; // 0=left, 2=right
+          if (btn === 0) gestureBuffer.push('left');
+          else if (btn === 2) gestureBuffer.push('right');
+          else return;
+
+          clearTimeout(gestureTimer);
+          gestureTimer = setTimeout(() => { gestureBuffer = []; }, 1500);
+
+          if (gestureBuffer.length >= ADMIN_GESTURE_SEQUENCE.length) {
+            const recent = gestureBuffer.slice(-ADMIN_GESTURE_SEQUENCE.length);
+            if (recent.join(',') === ADMIN_GESTURE_SEQUENCE.join(',')) {
+              gestureBuffer = [];
+              openAdminPanel();
+            }
+          }
+        });
+        topBar.addEventListener('contextmenu', (e) => e.preventDefault());
+      }
+
+      function openAdminPanel() {
+        // 加载配置
+        loadAdminConfig();
+        $('#adminApiKey').value = adminConfig.apiKey;
+        $('#adminBaseUrl').value = adminConfig.baseUrl;
+        $('#adminModelManual').value = adminConfig.model;
+        // 预填模型下拉
+        const sel = $('#adminModelSelect');
+        sel.innerHTML = `<option value="${adminConfig.model}">${adminConfig.model}</option>`;
+        adminModal.classList.remove('hidden');
+      }
+
+      // ==================== Gun.js ====================
+      function initGun() {
+        gun = Gun(['https://gun-manhattan.herokuapp.com/gun', 'https://gun-us.herokuapp.com/gun']);
+        const room = gun.get('waifu_final').get(ROOM_ID);
+
+        // 消息监听
+        room.get('messages').map().on((msg, key) => {
+          if (!msg || !key || key === '_' || typeof msg !== 'object') return;
+          if (!msg.text || !msg.type) return;
+          if (!messageCache.has(key)) {
+            messageCache.set(key, { ...msg, key });
+            renderMessages();
+            if (isAdmin && adminConfig.apiKey) handleAIRequest(msg, key);
+          }
+        });
+
+        // 角色监听
+        room.get('roles').map().on((data, roleName) => {
+          if (!data || roleName === '_') return;
+          if (data === null) delete allRoles[roleName];
+          else allRoles[roleName] = data;
+          updateRoleListUI();
+        });
+
+        // 心跳
+        setInterval(() => {
+          if (currentUser && gun) {
+            gun.get('waifu_final').get('presence').get(currentUser.username).put({
+              lastSeen: Date.now(),
+              isAdmin: isAdmin
+            });
+          }
+        }, 8000);
+        updateOnlineLoop();
+      }
+
+      function updateOnlineLoop() {
+        setInterval(() => {
+          let count = 0;
+          let adminOnline = false;
+          gun.get('waifu_final').get('presence').map().once((data) => {
+            if (data && data.lastSeen && Date.now() - data.lastSeen < 15000) {
+              count++;
+              if (data.isAdmin) adminOnline = true;
+            }
+          });
+          setTimeout(() => {
+            onlineCount.textContent = `🟢 ${count || 1} 在线${!adminOnline ? ' · ⚠️管理员离线' : ''}`;
+          }, 200);
+        }, 10000);
+      }
+
+      function publishMessage(msg) { gun?.get('waifu_final').get(ROOM_ID).get('messages').set(msg); }
+      function registerRole(name, persona) {
+        gun?.get('waifu_final').get(ROOM_ID).get('roles').get(name).put({
+          owner: currentUser.username,
+          persona: persona,
+          timestamp: Date.now()
+        });
+      }
+
+      // ==================== AI处理 ====================
+      function handleAIRequest(msg, key) {
+        if (msg.type !== 'user') return;
+        const text = msg.text || '';
+        const mentioned = Object.keys(allRoles).filter(name => {
+          const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          return new RegExp(`@${esc}`, 'i').test(text);
+        });
+        mentioned.forEach(roleName => {
+          const replyId = key + '_' + roleName;
+          if (repliedMessages.has(replyId)) return;
+          repliedMessages.add(replyId);
+          const role = allRoles[roleName];
+          callAI(role.persona, text).then(reply => {
+            if (reply) {
+              publishMessage({
+                type: 'ai',
+                sender: roleName,
+                text: reply,
+                timestamp: Date.now(),
+                roleOwner: role.owner
+              });
+            }
+          });
+        });
+      }
+
+      async function callAI(persona, userMessage) {
+        if (!adminConfig.apiKey || !adminConfig.baseUrl) return null;
+        const url = (adminConfig.baseUrl.replace(/\/+$/, '')) + '/chat/completions';
+        const body = {
+          model: adminConfig.model,
+          messages: [
+            { role: 'system', content: persona },
+            { role: 'user', content: userMessage }
+          ],
+          temperature: 0.9,
+          max_tokens: 300
+        };
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminConfig.apiKey}` },
+            body: JSON.stringify(body)
+          });
+          if (!res.ok) return null;
+          const data = await res.json();
+          return data.choices?.[0]?.message?.content?.trim() || null;
+        } catch (e) {
+          console.error('AI调用失败:', e);
+          return null;
+        }
+      }
+
+      // ==================== 模型获取 ====================
+      async function fetchModels() {
+        const apiKey = $('#adminApiKey').value.trim();
+        const baseUrl = $('#adminBaseUrl').value.trim().replace(/\/+$/, '');
+        if (!apiKey || !baseUrl) { showToast('请先填写API Key和Base URL'); return; }
+        $('#fetchModelsBtn').disabled = true;
+        $('#fetchModelsBtn').textContent = '获取中...';
+        try {
+          const res = await fetch(`${baseUrl}/models`, {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          const models = data.data || [];
+          const sel = $('#adminModelSelect');
+          sel.innerHTML = models.map(m => `<option value="${m.id}">${m.id}</option>`).join('');
+          if (adminConfig.model && models.some(m => m.id === adminConfig.model)) {
+            sel.value = adminConfig.model;
+          }
+          showToast(`✅ 获取到 ${models.length} 个模型`);
+        } catch (e) {
+          showToast('获取模型失败: ' + e.message);
+        } finally {
+          $('#fetchModelsBtn').disabled = false;
+          $('#fetchModelsBtn').textContent = '获取模型';
+        }
+      }
+
+      // ==================== 渲染 ====================
+      function renderMessages() {
+        const wasNearBottom = isNearBottom();
+        const msgs = Array.from(messageCache.values()).sort((a,b) => (a.timestamp||0)-(b.timestamp||0));
+        let html = '';
+        msgs.forEach(m => {
+          const isAI = m.type === 'ai';
+          const sender = m.sender || '匿名';
+          const avatarChar = isAI ? '💖' : (sender.charAt(0)||'?').toUpperCase();
+          const time = m.timestamp ? new Date(m.timestamp).toLocaleTimeString('zh-CN', {hour12:false}) : '';
+          html += `<div class="message ${isAI?'ai':'user'}">
+            <div class="avatar">${avatarChar}</div>
+            <div><div class="meta"><span>${escapeHtml(sender)}</span>${isAI?'<span class="role-badge" style="background:#e0557a;color:#fff;font-size:0.6rem;padding:1px 4px;border-radius:4px;">AI</span>':''}<span>${time}</span></div>
+            <div class="bubble">${escapeHtml(m.text)}</div></div></div>`;
+        });
+        messagesContainer.innerHTML = html || '<div class="typing-indicator">💬 聊天室空空如也，@AI名字 召唤老婆吧~</div>';
+        if (wasNearBottom) scrollToBottom(true);
+      }
+
+      function updateRoleListUI() {
+        const names = Object.keys(allRoles);
+        roleListDiv.innerHTML = '<strong>已注册AI角色：</strong>' + (names.length ? '' : ' 暂无');
+        names.forEach(name => {
+          roleListDiv.innerHTML += `<div class="role-item">💖 @${escapeHtml(name)} <span style="font-size:0.6rem;">by ${escapeHtml(allRoles[name].owner)}</span></div>`;
+        });
+      }
+
+      // ==================== 用户操作 ====================
+      function sendMessage() {
+        const text = messageInput.value.trim();
+        if (!text || !currentUser) return;
+        messageInput.value = '';
+        publishMessage({ type: 'user', sender: currentUser.username, text, timestamp: Date.now() });
+      }
+
+      function login(u, p) {
+        const users = getUsers();
+        if (!users[u]) return '用户不存在';
+        if (users[u] !== p) return '密码错误';
+        currentUser = { username: u, password: p };
+        saveCurrentUser(currentUser);
+        afterLogin();
+        return null;
+      }
+      function register(u, p) {
+        if (!u || !p) return '不能为空';
+        if (u.length < 2) return '用户名至少2字符';
+        const users = getUsers();
+        if (users[u]) return '用户已存在';
+        users[u] = p;
+        saveUsers(users);
+        currentUser = { username: u, password: p };
+        saveCurrentUser(currentUser);
+        afterLogin();
+        return null;
+      }
+      function afterLogin() {
+        authScreen.classList.remove('active');
+        chatScreen.classList.add('active');
+        loadAdminConfig();
+        // 判断管理员：adminConfig.apiKey非空则认为此浏览器为管理员
+        isAdmin = !!adminConfig.apiKey;
+        if (isAdmin) adminIndicator.style.display = 'block';
+        else adminIndicator.style.display = 'none';
+        // 恢复我的角色
+        const role = loadMyRole();
+        if (role) {
+          $('#myRoleName').value = role.name || '';
+          $('#myRolePersona').value = role.persona || '';
+        }
+        initGun();
+        renderMessages();
+        scrollToBottom(true);
+        updateRoleListUI();
+      }
+      function logout() {
+        currentUser = null;
+        isAdmin = false;
+        localStorage.removeItem(STORAGE_CURRENT);
+        chatScreen.classList.remove('active');
+        authScreen.classList.add('active');
+        messageCache.clear();
+        repliedMessages.clear();
+        allRoles = {};
+        messagesContainer.innerHTML = '';
+        gun = null;
+      }
+
+      // ==================== 事件绑定 ====================
+      document.getElementById('loginBtn').addEventListener('click', () => {
+        const err = login($('#usernameInput').value.trim(), $('#passwordInput').value);
+        $('#authError').textContent = err || '';
+      });
+      document.getElementById('registerBtn').addEventListener('click', () => {
+        const err = register($('#usernameInput').value.trim(), $('#passwordInput').value);
+        $('#authError').textContent = err || '';
+      });
+      document.getElementById('toggleToRegister').addEventListener('click', function() {
+        document.querySelector('#authScreen h2').textContent = '📝 注册账号';
+        document.getElementById('loginBtn').style.display = 'none';
+        document.getElementById('registerBtn').style.display = 'block';
+        const p = document.querySelector('#authScreen .link-text').parentNode;
+        p.innerHTML = '已有账号？<span class="link-text" id="toggleToLogin">立即登录</span>';
+        document.getElementById('toggleToLogin').addEventListener('click', function() {
+          document.querySelector('#authScreen h2').textContent = '💖 AI老婆聊天室';
+          document.getElementById('loginBtn').style.display = 'block';
+          document.getElementById('registerBtn').style.display = 'none';
+          p.innerHTML = '没有账号？<span class="link-text" id="toggleToRegister">立即注册</span>';
+          document.getElementById('toggleToRegister').addEventListener('click', arguments.callee);
+        });
+      });
+
+      sendBtn.addEventListener('click', sendMessage);
+      messageInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+      });
+      messageInput.addEventListener('input', () => { sendBtn.disabled = !messageInput.value.trim(); });
+
+      menuBtn.addEventListener('click', () => sidebarRight.classList.toggle('open'));
+      $('#closeSidebarBtn').addEventListener('click', () => sidebarRight.classList.remove('open'));
+      document.getElementById('logoutBtn').addEventListener('click', logout);
+
+      // 用户保存角色
+      document.getElementById('saveRoleBtn').addEventListener('click', () => {
+        const name = $('#myRoleName').value.trim();
+        const persona = $('#myRolePersona').value.trim();
+        if (!name || !persona) { showToast('请填写角色名字和人设'); return; }
+        saveMyRole({ name, persona });
+        registerRole(name, persona);
+        showToast('💖 AI角色已注册！@' + name + ' 可召唤');
+        sidebarRight.classList.remove('open');
+      });
+
+      // 管理员弹窗事件
+      $('#fetchModelsBtn').addEventListener('click', fetchModels);
+      $('#saveAdminBtn').addEventListener('click', () => {
+        const apiKey = $('#adminApiKey').value.trim();
+        const baseUrl = $('#adminBaseUrl').value.trim() || DEEPSEEK_BASE;
+        const model = $('#adminModelSelect').value || $('#adminModelManual').value.trim();
+        if (!apiKey || !model) { showToast('请填写API Key和模型'); return; }
+        adminConfig = { apiKey, baseUrl, model };
+        saveAdminConfig();
+        isAdmin = true;
+        adminIndicator.style.display = 'block';
+        adminModal.classList.add('hidden');
+        showToast('👑 管理员模式已激活！');
+      });
+      $('#closeAdminBtn').addEventListener('click', () => adminModal.classList.add('hidden'));
+
+      // 手势检测初始化
+      setupGestureDetection();
+
+      // 尝试自动登录
+      (function init() {
+        const saved = loadCurrentUser();
+        if (saved?.username) {
+          const users = getUsers();
+          if (users[saved.username] === saved.password) {
+            currentUser = saved;
+            afterLogin();
+            return;
+          }
+        }
+        authScreen.classList.add('active');
+      })();
+    })();
+  </script>
+</body>
+</html>
