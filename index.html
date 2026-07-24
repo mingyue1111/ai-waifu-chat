@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-  <title>AI老婆聊天室 · 记忆强化版</title>
+  <title>AI老婆聊天室 · AI互相召唤版</title>
   <style>
     :root {
       --bg: #1a1d23;
@@ -175,7 +175,7 @@
   <div class="screen active" id="authScreen">
     <div class="auth-box">
       <h2>💖 AI老婆聊天室</h2>
-      <p style="text-align:center; color:var(--text-secondary);">创建专属AI · 群聊记忆 · 自由互动</p>
+      <p style="text-align:center; color:var(--text-secondary);">创建专属AI · 群聊记忆 · AI可互相召唤</p>
       <input type="text" id="usernameInput" placeholder="用户名" maxlength="15">
       <input type="password" id="passwordInput" placeholder="密码" maxlength="30">
       <div class="error-msg" id="authError"></div>
@@ -283,14 +283,14 @@
         toast._timeout = setTimeout(() => toast.classList.remove('show'), d);
       }
 
-      function getUsers() { try { return JSON.parse(localStorage.getItem('waifu_v8_users'))||{}; } catch { return {}; } }
-      function saveUsers(u) { localStorage.setItem('waifu_v8_users', JSON.stringify(u)); }
-      function loadCurrentUser() { try { return JSON.parse(localStorage.getItem('waifu_v8_current')); } catch { return null; } }
-      function saveCurrentUser(u) { localStorage.setItem('waifu_v8_current', JSON.stringify(u)); }
-      function loadAdminConfig() { try { const c = JSON.parse(localStorage.getItem('waifu_v8_admin')); if (c) adminConfig = c; } catch {} }
-      function saveAdminConfig() { localStorage.setItem('waifu_v8_admin', JSON.stringify(adminConfig)); }
-      function loadMyRole() { try { return JSON.parse(localStorage.getItem('waifu_v8_my_role')); } catch { return null; } }
-      function saveMyRole(r) { localStorage.setItem('waifu_v8_my_role', JSON.stringify(r)); }
+      function getUsers() { try { return JSON.parse(localStorage.getItem('waifu_v9_users'))||{}; } catch { return {}; } }
+      function saveUsers(u) { localStorage.setItem('waifu_v9_users', JSON.stringify(u)); }
+      function loadCurrentUser() { try { return JSON.parse(localStorage.getItem('waifu_v9_current')); } catch { return null; } }
+      function saveCurrentUser(u) { localStorage.setItem('waifu_v9_current', JSON.stringify(u)); }
+      function loadAdminConfig() { try { const c = JSON.parse(localStorage.getItem('waifu_v9_admin')); if (c) adminConfig = c; } catch {} }
+      function saveAdminConfig() { localStorage.setItem('waifu_v9_admin', JSON.stringify(adminConfig)); }
+      function loadMyRole() { try { return JSON.parse(localStorage.getItem('waifu_v9_my_role')); } catch { return null; } }
+      function saveMyRole(r) { localStorage.setItem('waifu_v9_my_role', JSON.stringify(r)); }
       function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
       function scrollBottom(instant) {
@@ -414,12 +414,15 @@
             if (!messageCache.has(msg.id.toString())) {
               messageCache.set(msg.id.toString(), msg);
               renderMessages();
-              if (isAdmin && adminConfig.apiKey && msg.type === 'user') handleAI(msg, msg.id.toString());
+              // 关键修复：允许用户消息和AI消息都触发召唤
+              if (isAdmin && adminConfig.apiKey && (msg.type === 'user' || msg.type === 'ai')) {
+                handleAI(msg, msg.id.toString());
+              }
             }
           }).subscribe();
       }
 
-      // ============ AI 核心：终极记忆增强 ============
+      // ============ AI 处理（记忆+AI互相召唤） ============
       async function getRecentHistory(currentMsgId, count = 30) {
         if (!supabase) return [];
         try {
@@ -432,7 +435,6 @@
           if (!data) return [];
           const filtered = data.filter(m => m.id.toString() !== currentMsgId && (m.type === 'user' || m.type === 'ai'));
           const recent = filtered.reverse();
-          // 强化格式：明确告诉模型这是谁说的，以及是不是AI
           return recent.map(m => {
             const prefix = m.type === 'ai' ? `${m.sender} (AI):` : `${m.sender}:`;
             return { role: m.type === 'user' ? 'user' : 'assistant', content: `${prefix} ${m.text}` };
@@ -478,7 +480,6 @@
             { role: 'user', content: `${msg.sender}: ${text}` }
           ];
 
-          // 打印调试日志
           console.log(`🤖 调用 ${roleName} 的消息列表：`, messages);
 
           const reply = await callAI(messages);
@@ -584,7 +585,7 @@
       }
       function logout() {
         currentUser=null; isAdmin=false;
-        localStorage.removeItem('waifu_v8_current');
+        localStorage.removeItem('waifu_v9_current');
         chatScreen.classList.remove('active'); authScreen.classList.add('active');
         messageCache.clear(); allRoles={};
         if (messagesContainer) messagesContainer.innerHTML='';
