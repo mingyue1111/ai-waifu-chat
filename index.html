@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-  <title>AI老婆聊天室 · 角色扮演修复</title>
+  <title>AI老婆聊天室 · 群聊记忆增强版</title>
   <style>
     :root {
       --bg: #1a1d23;
@@ -175,7 +175,7 @@
   <div class="screen active" id="authScreen">
     <div class="auth-box">
       <h2>💖 AI老婆聊天室</h2>
-      <p style="text-align:center; color:var(--text-secondary);">创建专属AI · 管理员统一调度</p>
+      <p style="text-align:center; color:var(--text-secondary);">创建专属AI · 群聊记忆 · 自由互动</p>
       <input type="text" id="usernameInput" placeholder="用户名" maxlength="15">
       <input type="password" id="passwordInput" placeholder="密码" maxlength="30">
       <div class="error-msg" id="authError"></div>
@@ -283,14 +283,14 @@
         toast._timeout = setTimeout(() => toast.classList.remove('show'), d);
       }
 
-      function getUsers() { try { return JSON.parse(localStorage.getItem('waifu_v5_users'))||{}; } catch { return {}; } }
-      function saveUsers(u) { localStorage.setItem('waifu_v5_users', JSON.stringify(u)); }
-      function loadCurrentUser() { try { return JSON.parse(localStorage.getItem('waifu_v5_current')); } catch { return null; } }
-      function saveCurrentUser(u) { localStorage.setItem('waifu_v5_current', JSON.stringify(u)); }
-      function loadAdminConfig() { try { const c = JSON.parse(localStorage.getItem('waifu_v5_admin')); if (c) adminConfig = c; } catch {} }
-      function saveAdminConfig() { localStorage.setItem('waifu_v5_admin', JSON.stringify(adminConfig)); }
-      function loadMyRole() { try { return JSON.parse(localStorage.getItem('waifu_v5_my_role')); } catch { return null; } }
-      function saveMyRole(r) { localStorage.setItem('waifu_v5_my_role', JSON.stringify(r)); }
+      function getUsers() { try { return JSON.parse(localStorage.getItem('waifu_v7_users'))||{}; } catch { return {}; } }
+      function saveUsers(u) { localStorage.setItem('waifu_v7_users', JSON.stringify(u)); }
+      function loadCurrentUser() { try { return JSON.parse(localStorage.getItem('waifu_v7_current')); } catch { return null; } }
+      function saveCurrentUser(u) { localStorage.setItem('waifu_v7_current', JSON.stringify(u)); }
+      function loadAdminConfig() { try { const c = JSON.parse(localStorage.getItem('waifu_v7_admin')); if (c) adminConfig = c; } catch {} }
+      function saveAdminConfig() { localStorage.setItem('waifu_v7_admin', JSON.stringify(adminConfig)); }
+      function loadMyRole() { try { return JSON.parse(localStorage.getItem('waifu_v7_my_role')); } catch { return null; } }
+      function saveMyRole(r) { localStorage.setItem('waifu_v7_my_role', JSON.stringify(r)); }
       function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
       function scrollBottom(instant) {
@@ -383,7 +383,7 @@
         }
       }
 
-      // ============ 消息发送（彻底修复发送者） ============
+      // ============ 消息发送 ============
       async function sendMsg(text, type, senderOverride, extra={}) {
         if (!supabase) return;
         const sender = senderOverride || (currentUser ? currentUser.username : '匿名');
@@ -419,31 +419,89 @@
           }).subscribe();
       }
 
-      // ============ AI 处理（修复角色扮演 + 发送者） ============
-      function handleAI(msg, key) {
+      // ============ AI 核心：强化记忆 ============
+      // 获取最近聊天历史，用于构建上下文
+      async function getRecentHistory(currentMsgId, count = 30) {
+        if (!supabase) return [];
+        try {
+          // 获取最近的消息，按时间降序然后取前 count 条，再反转成升序
+          const { data } = await supabase
+            .from('messages')
+            .select('*')
+            .eq('room_id', ROOM_ID)
+            .order('timestamp', { ascending: false })
+            .limit(count);
+          if (!data) return [];
+          // 过滤掉当前正在处理的消息（避免重复）
+          const filtered = data.filter(m => m.id.toString() !== currentMsgId && (m.type === 'user' || m.type === 'ai'));
+          // 反转成时间升序
+          const recent = filtered.reverse();
+          // 转换成 openai 格式的历史消息
+          return recent.map(m => ({
+            role: m.type === 'user' ? 'user' : 'assistant',
+            content: m.type === 'user' ? `${m.sender}: ${m.text}` : `${m.sender}: ${m.text}`
+          }));
+        } catch (e) {
+          console.error('获取历史失败:', e);
+          return [];
+        }
+      }
+
+      // 构建其他角色描述
+      function buildOtherRolesDescription(currentRoleName) {
+        const others = Object.keys(allRoles).filter(name => name !== currentRoleName);
+        if (others.length === 0) return '';
+        let desc = '当前聊天室中还有以下角色，你可以直接与他们对话（在回复中可以用@角色名来指定说话对象）：\n';
+        others.forEach(name => {
+          const role = allRoles[name];
+          desc += `- ${name}: ${role.persona}\n`;
+        });
+        return desc;
+      }
+
+      async function handleAI(msg, key) {
         const text = msg.text || '';
+        // 找出所有被@的角色名
         const mentioned = Object.keys(allRoles).filter(name => {
           const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           return new RegExp(`@${esc}`, 'i').test(text);
         });
-        mentioned.forEach(roleName => {
+        // 对于每个被@的角色，异步调用AI回复
+        mentioned.forEach(async (roleName) => {
           const rid = key + '_' + roleName;
           if (repliedMessages.has(rid)) return;
           repliedMessages.add(rid);
           const role = allRoles[roleName];
           if (!role) return;
-          // 严格的角色扮演指令
-          const systemPrompt = `你是${roleName}。下面是你的人设：${role.persona}。请完全融入这个角色，用第一人称、角色的语气说话。只输出角色的直接回复，不要加任何前缀、解释、括号内的心理活动或分析。`;
-          callAI(systemPrompt, text).then(reply => {
-            if (reply) {
-              // 关键修复：直接指定发送者为角色名
-              sendMsg(reply, 'ai', roleName, { roleOwner: role.owner });
-            }
-          });
+
+          // 获取历史消息（不包含当前这条）
+          const history = await getRecentHistory(key, 30);
+          const otherRolesDesc = buildOtherRolesDescription(roleName);
+
+          const systemPrompt = `你是${roleName}，你的人设是：${role.persona}。
+请完全融入这个角色，用第一人称、符合人设的语气说话。只输出角色的直接对话内容，不要加任何前缀、解释、括号内的心理活动或分析。
+你可以与聊天室中的其他角色互动，直接对他们说话，也可以引用聊天记录中的事情。
+${otherRolesDesc}
+请基于上下文和人设进行回复。记住，你能够看到之前的全部对话，请保持对话的连贯性。`;
+
+          // 组装消息列表：系统提示 + 历史 + 当前用户消息
+          const messages = [
+            { role: 'system', content: systemPrompt },
+            ...history,
+            { role: 'user', content: `${msg.sender}: ${text}` }
+          ];
+
+          // 输出调试日志（可以在控制台查看传递的完整消息）
+          console.log('传递给模型的消息：', messages);
+
+          const reply = await callAI(messages);
+          if (reply) {
+            sendMsg(reply, 'ai', roleName, { roleOwner: role.owner });
+          }
         });
       }
 
-      async function callAI(systemPrompt, userMsg) {
+      async function callAI(messages) {
         if (!adminConfig.apiKey || !adminConfig.baseUrl) return null;
         const url = adminConfig.baseUrl.replace(/\/+$/, '') + '/chat/completions';
         try {
@@ -452,18 +510,21 @@
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminConfig.apiKey}` },
             body: JSON.stringify({
               model: adminConfig.model,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userMsg }
-              ],
+              messages: messages,
               temperature: 0.9,
-              max_tokens: 300
+              max_tokens: 500 // 稍微增加长度，以便包含更多记忆回复
             })
           });
-          if (!res.ok) return null;
+          if (!res.ok) {
+            console.error('API调用失败：', res.status, await res.text());
+            return null;
+          }
           const d = await res.json();
           return d.choices?.[0]?.message?.content?.trim() || null;
-        } catch { return null; }
+        } catch (e) {
+          console.error('调用异常:', e);
+          return null;
+        }
       }
 
       function renderMessages() {
@@ -536,7 +597,7 @@
       }
       function logout() {
         currentUser=null; isAdmin=false;
-        localStorage.removeItem('waifu_v5_current');
+        localStorage.removeItem('waifu_v7_current');
         chatScreen.classList.remove('active'); authScreen.classList.add('active');
         messageCache.clear(); allRoles={};
         if (messagesContainer) messagesContainer.innerHTML='';
