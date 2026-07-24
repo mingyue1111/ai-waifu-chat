@@ -75,16 +75,25 @@
       display: flex; flex-direction: column; width: 300px; min-width: 300px;
       border-left: 1px solid var(--border); background: var(--surface-light);
       transition: transform 0.3s ease; z-index: 20;
+      overflow-y: auto;
     }
     @media (max-width: 768px) {
       .right-panels {
-        position: absolute; right: 0; top: 0; bottom: 0;
+        position: fixed; top: 0; right: 0; bottom: 0; width: 85%; max-width: 320px;
         transform: translateX(100%); box-shadow: -8px 0 20px rgba(0,0,0,0.5);
       }
       .right-panels.open { transform: translateX(0); }
+      .panel-close-btn { display: block !important; }
+    }
+    .panel-close-btn {
+      display: none;
+      position: absolute; top: 12px; right: 12px;
+      background: var(--danger); color: #fff; border: none;
+      width: 28px; height: 28px; border-radius: 50%; font-size: 1rem;
+      cursor: pointer; z-index: 22;
     }
 
-    .panel-section { padding: 1rem; border-bottom: 1px solid var(--border); }
+    .panel-section { padding: 1rem; border-bottom: 1px solid var(--border); position: relative; }
     .panel-section:last-child { border-bottom: none; flex: 1; overflow-y: auto; }
 
     .role-list-item {
@@ -155,6 +164,13 @@
       font-size: 0.85rem; z-index: 100; opacity: 0; transition: opacity 0.3s; pointer-events: none;
     }
     .toast.show { opacity: 1; }
+    .overlay-bg {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.3); z-index: 19; display: none;
+    }
+    @media (max-width: 768px) {
+      .overlay-bg.active { display: block; }
+    }
   </style>
 </head>
 <body>
@@ -195,10 +211,11 @@
       </div>
       <!-- 右侧面板 -->
       <div class="right-panels" id="rightPanels">
+        <button class="panel-close-btn" id="panelCloseBtn">✕</button>
         <div class="panel-section">
           <h3>💖 我的AI</h3>
           <input type="text" id="myRoleName" placeholder="角色名" maxlength="10" style="width:100%; margin:0.5rem 0; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:0.5rem; color:var(--text);">
-          <textarea id="myRolePersona" rows="2" placeholder="人设" style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:0.5rem; color:var(--text); resize:vertical;"></textarea>
+          <textarea id="myRolePersona" rows="2" placeholder="人设（例如：温柔可爱的女友，喜欢用颜文字）" style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:0.5rem; color:var(--text); resize:vertical;"></textarea>
           <button class="btn-small" id="saveRoleBtn" style="margin-top:0.5rem; width:100%;">💾 保存我的AI</button>
         </div>
         <div class="panel-section" style="flex:1; overflow-y:auto;">
@@ -207,6 +224,8 @@
         </div>
       </div>
     </div>
+    <!-- 移动端遮罩 -->
+    <div class="overlay-bg" id="overlayBg"></div>
   </div>
 
   <!-- 管理员弹窗 -->
@@ -233,7 +252,6 @@
     (function() {
       const SUPABASE_URL = 'https://llesxnxckovgoauxttjh.supabase.co';
       const SUPABASE_KEY = 'sb_publishable_Xw2AS1s8k2TLyWGRKzwu6w_LgxivHNt';
-
       const ROOM_ID = 'ai_waifu_room';
       const DEEPSEEK_BASE = 'https://api.deepseek.com/v1';
       const DEEPSEEK_MODEL = 'deepseek-chat';
@@ -251,6 +269,8 @@
       const connectionStatus = getEl('connectionStatus');
       const rightPanels = getEl('rightPanels');
       const togglePanelBtn = getEl('togglePanelBtn');
+      const panelCloseBtn = getEl('panelCloseBtn');
+      const overlayBg = getEl('overlayBg');
       const adminModal = getEl('adminModal');
       const roleListDiv = getEl('roleList');
       const toast = getEl('toast');
@@ -262,9 +282,7 @@
       let messageCache = new Map();
       let allRoles = {};
       let repliedMessages = new Set();
-      let channel = null;
-      let roleChannel = null;
-
+      let channel = null, roleChannel = null;
       let gestureBuf = [], gestureTimer = null;
 
       function showToast(msg, d=2200) {
@@ -282,7 +300,6 @@
       function saveAdminConfig() { localStorage.setItem('waifu_v4_admin', JSON.stringify(adminConfig)); }
       function loadMyRole() { try { return JSON.parse(localStorage.getItem('waifu_v4_my_role')); } catch { return null; } }
       function saveMyRole(r) { localStorage.setItem('waifu_v4_my_role', JSON.stringify(r)); }
-
       function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
       function scrollBottom(instant) {
@@ -290,19 +307,32 @@
         if (instant) messagesContainer.scrollTop = messagesContainer.scrollHeight;
         else requestAnimationFrame(() => { messagesContainer.scrollTop = messagesContainer.scrollHeight; });
       }
-
       function nearBottom() {
         if (!messagesContainer) return false;
         return messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 90;
       }
-
       function setConnected(v) {
         if (!connectionStatus) return;
         connectionStatus.textContent = v ? '🟢 已连接' : '🔴 未连接';
         connectionStatus.className = 'connection-status ' + (v ? 'online' : 'offline');
       }
 
-      // ============ Supabase 初始化 ============
+      // ============ 面板开关 ============
+      function openPanel() {
+        rightPanels?.classList.add('open');
+        overlayBg?.classList.add('active');
+      }
+      function closePanel() {
+        rightPanels?.classList.remove('open');
+        overlayBg?.classList.remove('active');
+      }
+      if (togglePanelBtn) togglePanelBtn.addEventListener('click', () => {
+        rightPanels?.classList.contains('open') ? closePanel() : openPanel();
+      });
+      if (panelCloseBtn) panelCloseBtn.addEventListener('click', closePanel);
+      if (overlayBg) overlayBg.addEventListener('click', closePanel);
+
+      // ============ Supabase ============
       async function initSupabase() {
         try {
           supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -322,8 +352,7 @@
       async function loadRoles() {
         if (!supabase) return;
         try {
-          const { data, error } = await supabase.from('roles').select('*');
-          if (error) throw error;
+          const { data } = await supabase.from('roles').select('*');
           allRoles = {};
           if (data) data.forEach(r => allRoles[r.name] = { owner: r.owner, persona: r.persona });
           updateRoleListUI();
@@ -332,33 +361,24 @@
           if (roleListDiv) roleListDiv.innerHTML = '<span style="color:red;">加载失败</span>';
         }
       }
-
       function subscribeRoles() {
         if (!supabase) return;
-        roleChannel = supabase
-          .channel('roles-live')
+        roleChannel = supabase.channel('roles-live')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'roles' }, () => loadRoles())
           .subscribe();
       }
 
       async function saveRole(name, persona) {
-        if (!supabase) {
-          showToast('系统未就绪，请稍后重试');
-          return;
-        }
-        if (!name || !persona || !currentUser) {
-          showToast('请填写完整信息');
-          return;
-        }
+        if (!supabase) { showToast('系统未就绪'); return; }
+        if (!name || !persona || !currentUser) { showToast('请填写完整'); return; }
         try {
-          const { error } = await supabase.from('roles').upsert({
+          await supabase.from('roles').upsert({
             name, owner: currentUser.username, persona, updated_at: Date.now()
           }, { onConflict: 'name' });
-          if (error) throw error;
           saveMyRole({ name, persona });
           showToast('✅ 角色已保存');
         } catch (e) {
-          console.error('保存角色失败:', e);
+          console.error(e);
           showToast('保存失败: ' + (e.message || '未知错误'));
         }
       }
@@ -381,18 +401,27 @@
         }
       }
 
+      // ============ 消息发送（修复发送者） ============
+      async function sendMsg(text, type, senderOverride, extra={}) {
+        if (!supabase || !currentUser) return;
+        const sender = senderOverride || currentUser.username;
+        try {
+          await supabase.from('messages').insert([{
+            room_id: ROOM_ID, sender, text, type, timestamp: Date.now(),
+            role_owner: extra.roleOwner || null
+          }]);
+        } catch (e) { console.error('发送失败:', e); }
+      }
+
       async function loadMessages() {
         if (!supabase) return;
         try {
-          const { data, error } = await supabase.from('messages').select('*').eq('room_id', ROOM_ID).order('timestamp', { ascending: true }).limit(200);
-          if (error) throw error;
+          const { data } = await supabase.from('messages').select('*').eq('room_id', ROOM_ID).order('timestamp', { ascending: true }).limit(200);
           messageCache.clear();
           if (data) data.forEach(m => messageCache.set(m.id.toString(), m));
           renderMessages();
           scrollBottom(true);
-        } catch (e) {
-          console.error('加载消息失败:', e);
-        }
+        } catch (e) { console.error('加载消息失败:', e); }
       }
 
       function subscribeMessages() {
@@ -408,18 +437,7 @@
           }).subscribe();
       }
 
-      async function sendMsg(text, type='user', extra={}) {
-        if (!supabase || !currentUser) return;
-        try {
-          await supabase.from('messages').insert([{
-            room_id: ROOM_ID, sender: currentUser.username, text, type, timestamp: Date.now(),
-            role_owner: extra.roleOwner || null
-          }]);
-        } catch (e) {
-          console.error('发送失败:', e);
-        }
-      }
-
+      // ============ AI 处理（修复角色扮演） ============
       function handleAI(msg, key) {
         const text = msg.text || '';
         const mentioned = Object.keys(allRoles).filter(name => {
@@ -432,20 +450,30 @@
           repliedMessages.add(rid);
           const role = allRoles[roleName];
           if (!role) return;
-          callAI(role.persona, text).then(reply => {
-            if (reply) sendMsg(reply, 'ai', { roleOwner: role.owner });
+          // 构建明确的角色扮演指令
+          const systemPrompt = `你叫${roleName}，你的性格、说话风格、人设是：${role.persona}。请严格按照这个设定来回复下面的话，不要进行任何分析、评价或解释，直接以${roleName}的口吻回复。`;
+          callAI(systemPrompt, text).then(reply => {
+            if (reply) sendMsg(reply, 'ai', roleName, { roleOwner: role.owner });
           });
         });
       }
 
-      async function callAI(persona, userMsg) {
+      async function callAI(systemPrompt, userMsg) {
         if (!adminConfig.apiKey || !adminConfig.baseUrl) return null;
         const url = adminConfig.baseUrl.replace(/\/+$/, '') + '/chat/completions';
         try {
           const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminConfig.apiKey}` },
-            body: JSON.stringify({ model: adminConfig.model, messages: [{ role: 'system', content: persona }, { role: 'user', content: userMsg }], temperature: 0.9, max_tokens: 300 })
+            body: JSON.stringify({
+              model: adminConfig.model,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userMsg }
+              ],
+              temperature: 0.9,
+              max_tokens: 300
+            })
           });
           if (!res.ok) return null;
           const d = await res.json();
@@ -456,7 +484,9 @@
       function renderMessages() {
         if (!messagesContainer) return;
         const wasNear = nearBottom();
-        const msgs = Array.from(messageCache.values()).filter(m => m.type==='user'||m.type==='ai').sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
+        const msgs = Array.from(messageCache.values())
+          .filter(m => m.type==='user'||m.type==='ai')
+          .sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
         let html = '';
         msgs.forEach(m => {
           const isAI = m.type === 'ai';
@@ -496,7 +526,6 @@
         afterLogin();
         return null;
       }
-
       function register(u, p) {
         if (!u||!p) return '不能为空';
         const users = getUsers();
@@ -507,7 +536,6 @@
         afterLogin();
         return null;
       }
-
       function afterLogin() {
         authScreen.classList.remove('active');
         chatScreen.classList.add('active');
@@ -521,7 +549,6 @@
         initSupabase();
         if (togglePanelBtn) togglePanelBtn.style.display = window.innerWidth <= 768 ? 'block' : 'none';
       }
-
       function logout() {
         currentUser=null; isAdmin=false;
         localStorage.removeItem('waifu_v4_current');
@@ -546,14 +573,10 @@
           if (gestureBuf.length >= 6 && gestureBuf.slice(-6).join(',')===ADMIN_GESTURE.join(',')) {
             gestureBuf=[];
             loadAdminConfig();
-            const apiKeyEl = getEl('adminApiKey');
-            const baseUrlEl = getEl('adminBaseUrl');
-            const modelManualEl = getEl('adminModelManual');
-            const modelSelectEl = getEl('adminModelSelect');
-            if (apiKeyEl) apiKeyEl.value = adminConfig.apiKey;
-            if (baseUrlEl) baseUrlEl.value = adminConfig.baseUrl;
-            if (modelManualEl) modelManualEl.value = adminConfig.model;
-            if (modelSelectEl) modelSelectEl.innerHTML = `<option>${adminConfig.model}</option>`;
+            getEl('adminApiKey') && (getEl('adminApiKey').value = adminConfig.apiKey);
+            getEl('adminBaseUrl') && (getEl('adminBaseUrl').value = adminConfig.baseUrl);
+            getEl('adminModelManual') && (getEl('adminModelManual').value = adminConfig.model);
+            getEl('adminModelSelect') && (getEl('adminModelSelect').innerHTML = `<option>${adminConfig.model}</option>`);
             adminModal.classList.remove('hidden');
           }
         });
@@ -563,15 +586,13 @@
       // ============ 事件绑定 ============
       getEl('loginBtn')?.addEventListener('click', ()=>{
         const err = login(getEl('usernameInput')?.value?.trim()||'', getEl('passwordInput')?.value||'');
-        const authErr = getEl('authError');
-        if (err && authErr) authErr.textContent = err;
-        else if (authErr) authErr.textContent = '';
+        if (err) { const ae = getEl('authError'); if (ae) ae.textContent = err; }
+        else { const ae = getEl('authError'); if (ae) ae.textContent = ''; }
       });
       getEl('registerBtn')?.addEventListener('click', ()=>{
         const err = register(getEl('usernameInput')?.value?.trim()||'', getEl('passwordInput')?.value||'');
-        const authErr = getEl('authError');
-        if (err && authErr) authErr.textContent = err;
-        else if (authErr) authErr.textContent = '';
+        if (err) { const ae = getEl('authError'); if (ae) ae.textContent = err; }
+        else { const ae = getEl('authError'); if (ae) ae.textContent = ''; }
       });
       getEl('toggleToRegister')?.addEventListener('click', function(){
         const h2 = qs('#authScreen h2');
@@ -601,16 +622,13 @@
         if (e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendBtn?.click(); }
       });
 
-      togglePanelBtn?.addEventListener('click', ()=> rightPanels?.classList.toggle('open'));
       getEl('logoutBtn')?.addEventListener('click', logout);
-
       getEl('saveRoleBtn')?.addEventListener('click', ()=>{
         const name = getEl('myRoleName')?.value?.trim();
         const persona = getEl('myRolePersona')?.value?.trim();
         if (!name||!persona) { showToast('请填写完整'); return; }
         saveRole(name, persona);
       });
-
       getEl('fetchModelsBtn')?.addEventListener('click', async ()=>{
         const key = getEl('adminApiKey')?.value?.trim();
         const url = getEl('adminBaseUrl')?.value?.trim()?.replace(/\/+$/,'');
