@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-  <title>AI老婆聊天室</title>
+  <title>AI老婆聊天室 · 角色扮演修复</title>
   <style>
     :root {
       --bg: #1a1d23;
@@ -74,8 +74,7 @@
     .right-panels {
       display: flex; flex-direction: column; width: 300px; min-width: 300px;
       border-left: 1px solid var(--border); background: var(--surface-light);
-      transition: transform 0.3s ease; z-index: 20;
-      overflow-y: auto;
+      transition: transform 0.3s ease; z-index: 20; overflow-y: auto;
     }
     @media (max-width: 768px) {
       .right-panels {
@@ -86,8 +85,7 @@
       .panel-close-btn { display: block !important; }
     }
     .panel-close-btn {
-      display: none;
-      position: absolute; top: 12px; right: 12px;
+      display: none; position: absolute; top: 12px; right: 12px;
       background: var(--danger); color: #fff; border: none;
       width: 28px; height: 28px; border-radius: 50%; font-size: 1rem;
       cursor: pointer; z-index: 22;
@@ -168,15 +166,12 @@
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0,0,0,0.3); z-index: 19; display: none;
     }
-    @media (max-width: 768px) {
-      .overlay-bg.active { display: block; }
-    }
+    @media (max-width: 768px) { .overlay-bg.active { display: block; } }
   </style>
 </head>
 <body>
   <div class="toast" id="toast"></div>
 
-  <!-- 登录界面 -->
   <div class="screen active" id="authScreen">
     <div class="auth-box">
       <h2>💖 AI老婆聊天室</h2>
@@ -192,7 +187,6 @@
     </div>
   </div>
 
-  <!-- 主聊天界面 -->
   <div class="screen" id="chatScreen">
     <div class="chat-layout">
       <div class="main-panel">
@@ -209,7 +203,6 @@
           <button class="send-btn" id="sendBtn">➤</button>
         </div>
       </div>
-      <!-- 右侧面板 -->
       <div class="right-panels" id="rightPanels">
         <button class="panel-close-btn" id="panelCloseBtn">✕</button>
         <div class="panel-section">
@@ -224,11 +217,9 @@
         </div>
       </div>
     </div>
-    <!-- 移动端遮罩 -->
     <div class="overlay-bg" id="overlayBg"></div>
   </div>
 
-  <!-- 管理员弹窗 -->
   <div class="modal-overlay hidden" id="adminModal">
     <div class="modal-box">
       <h3>👑 管理员设置</h3>
@@ -292,14 +283,14 @@
         toast._timeout = setTimeout(() => toast.classList.remove('show'), d);
       }
 
-      function getUsers() { try { return JSON.parse(localStorage.getItem('waifu_v4_users'))||{}; } catch { return {}; } }
-      function saveUsers(u) { localStorage.setItem('waifu_v4_users', JSON.stringify(u)); }
-      function loadCurrentUser() { try { return JSON.parse(localStorage.getItem('waifu_v4_current')); } catch { return null; } }
-      function saveCurrentUser(u) { localStorage.setItem('waifu_v4_current', JSON.stringify(u)); }
-      function loadAdminConfig() { try { const c = JSON.parse(localStorage.getItem('waifu_v4_admin')); if (c) adminConfig = c; } catch {} }
-      function saveAdminConfig() { localStorage.setItem('waifu_v4_admin', JSON.stringify(adminConfig)); }
-      function loadMyRole() { try { return JSON.parse(localStorage.getItem('waifu_v4_my_role')); } catch { return null; } }
-      function saveMyRole(r) { localStorage.setItem('waifu_v4_my_role', JSON.stringify(r)); }
+      function getUsers() { try { return JSON.parse(localStorage.getItem('waifu_v5_users'))||{}; } catch { return {}; } }
+      function saveUsers(u) { localStorage.setItem('waifu_v5_users', JSON.stringify(u)); }
+      function loadCurrentUser() { try { return JSON.parse(localStorage.getItem('waifu_v5_current')); } catch { return null; } }
+      function saveCurrentUser(u) { localStorage.setItem('waifu_v5_current', JSON.stringify(u)); }
+      function loadAdminConfig() { try { const c = JSON.parse(localStorage.getItem('waifu_v5_admin')); if (c) adminConfig = c; } catch {} }
+      function saveAdminConfig() { localStorage.setItem('waifu_v5_admin', JSON.stringify(adminConfig)); }
+      function loadMyRole() { try { return JSON.parse(localStorage.getItem('waifu_v5_my_role')); } catch { return null; } }
+      function saveMyRole(r) { localStorage.setItem('waifu_v5_my_role', JSON.stringify(r)); }
       function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
       function scrollBottom(instant) {
@@ -317,18 +308,9 @@
         connectionStatus.className = 'connection-status ' + (v ? 'online' : 'offline');
       }
 
-      // ============ 面板开关 ============
-      function openPanel() {
-        rightPanels?.classList.add('open');
-        overlayBg?.classList.add('active');
-      }
-      function closePanel() {
-        rightPanels?.classList.remove('open');
-        overlayBg?.classList.remove('active');
-      }
-      if (togglePanelBtn) togglePanelBtn.addEventListener('click', () => {
-        rightPanels?.classList.contains('open') ? closePanel() : openPanel();
-      });
+      function openPanel() { rightPanels?.classList.add('open'); overlayBg?.classList.add('active'); }
+      function closePanel() { rightPanels?.classList.remove('open'); overlayBg?.classList.remove('active'); }
+      if (togglePanelBtn) togglePanelBtn.addEventListener('click', () => rightPanels?.classList.contains('open') ? closePanel() : openPanel());
       if (panelCloseBtn) panelCloseBtn.addEventListener('click', closePanel);
       if (overlayBg) overlayBg.addEventListener('click', closePanel);
 
@@ -401,10 +383,10 @@
         }
       }
 
-      // ============ 消息发送（修复发送者） ============
+      // ============ 消息发送（彻底修复发送者） ============
       async function sendMsg(text, type, senderOverride, extra={}) {
-        if (!supabase || !currentUser) return;
-        const sender = senderOverride || currentUser.username;
+        if (!supabase) return;
+        const sender = senderOverride || (currentUser ? currentUser.username : '匿名');
         try {
           await supabase.from('messages').insert([{
             room_id: ROOM_ID, sender, text, type, timestamp: Date.now(),
@@ -437,7 +419,7 @@
           }).subscribe();
       }
 
-      // ============ AI 处理（修复角色扮演） ============
+      // ============ AI 处理（修复角色扮演 + 发送者） ============
       function handleAI(msg, key) {
         const text = msg.text || '';
         const mentioned = Object.keys(allRoles).filter(name => {
@@ -450,10 +432,13 @@
           repliedMessages.add(rid);
           const role = allRoles[roleName];
           if (!role) return;
-          // 构建明确的角色扮演指令
-          const systemPrompt = `你叫${roleName}，你的性格、说话风格、人设是：${role.persona}。请严格按照这个设定来回复下面的话，不要进行任何分析、评价或解释，直接以${roleName}的口吻回复。`;
+          // 严格的角色扮演指令
+          const systemPrompt = `你是${roleName}。下面是你的人设：${role.persona}。请完全融入这个角色，用第一人称、角色的语气说话。只输出角色的直接回复，不要加任何前缀、解释、括号内的心理活动或分析。`;
           callAI(systemPrompt, text).then(reply => {
-            if (reply) sendMsg(reply, 'ai', roleName, { roleOwner: role.owner });
+            if (reply) {
+              // 关键修复：直接指定发送者为角色名
+              sendMsg(reply, 'ai', roleName, { roleOwner: role.owner });
+            }
           });
         });
       }
@@ -551,7 +536,7 @@
       }
       function logout() {
         currentUser=null; isAdmin=false;
-        localStorage.removeItem('waifu_v4_current');
+        localStorage.removeItem('waifu_v5_current');
         chatScreen.classList.remove('active'); authScreen.classList.add('active');
         messageCache.clear(); allRoles={};
         if (messagesContainer) messagesContainer.innerHTML='';
@@ -583,7 +568,7 @@
         topBarEl.addEventListener('contextmenu', e=>e.preventDefault());
       }
 
-      // ============ 事件绑定 ============
+      // ============ 事件 ============
       getEl('loginBtn')?.addEventListener('click', ()=>{
         const err = login(getEl('usernameInput')?.value?.trim()||'', getEl('passwordInput')?.value||'');
         if (err) { const ae = getEl('authError'); if (ae) ae.textContent = err; }
