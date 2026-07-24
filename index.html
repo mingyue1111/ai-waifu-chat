@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-  <title>AI老婆聊天室 · 修复版</title>
+  <title>AI老婆聊天室</title>
   <style>
     :root {
       --bg: #1a1d23;
@@ -84,9 +84,7 @@
       .right-panels.open { transform: translateX(0); }
     }
 
-    .panel-section {
-      padding: 1rem; border-bottom: 1px solid var(--border);
-    }
+    .panel-section { padding: 1rem; border-bottom: 1px solid var(--border); }
     .panel-section:last-child { border-bottom: none; flex: 1; overflow-y: auto; }
 
     .role-list-item {
@@ -162,6 +160,7 @@
 <body>
   <div class="toast" id="toast"></div>
 
+  <!-- 登录界面 -->
   <div class="screen active" id="authScreen">
     <div class="auth-box">
       <h2>💖 AI老婆聊天室</h2>
@@ -177,6 +176,7 @@
     </div>
   </div>
 
+  <!-- 主聊天界面 -->
   <div class="screen" id="chatScreen">
     <div class="chat-layout">
       <div class="main-panel">
@@ -193,6 +193,7 @@
           <button class="send-btn" id="sendBtn">➤</button>
         </div>
       </div>
+      <!-- 右侧面板 -->
       <div class="right-panels" id="rightPanels">
         <div class="panel-section">
           <h3>💖 我的AI</h3>
@@ -208,6 +209,7 @@
     </div>
   </div>
 
+  <!-- 管理员弹窗 -->
   <div class="modal-overlay hidden" id="adminModal">
     <div class="modal-box">
       <h3>👑 管理员设置</h3>
@@ -236,24 +238,22 @@
       const DEEPSEEK_BASE = 'https://api.deepseek.com/v1';
       const DEEPSEEK_MODEL = 'deepseek-chat';
       const ADMIN_GESTURE = ['left','left','left','right','right','right'];
-      const STORAGE_USERS = 'waifu_v3_users';
-      const STORAGE_CURRENT = 'waifu_v3_current';
-      const STORAGE_ADMIN = 'waifu_v3_admin';
-      const STORAGE_MY_ROLE = 'waifu_v3_my_role';
 
-      const $ = (s) => document.querySelector(s);
-      const authScreen = $('#authScreen');
-      const chatScreen = $('#chatScreen');
-      const messagesContainer = $('#messagesContainer');
-      const messageInput = $('#messageInput');
-      const sendBtn = $('#sendBtn');
-      const onlineCount = $('#onlineCount');
-      const connectionStatus = $('#connectionStatus');
-      const rightPanels = $('#rightPanels');
-      const togglePanelBtn = $('#togglePanelBtn');
-      const adminModal = $('#adminModal');
-      const roleListDiv = $('#roleList');
-      const toast = $('#toast');
+      function getEl(id) { return document.getElementById(id); }
+      function qs(sel) { return document.querySelector(sel); }
+
+      const authScreen = getEl('authScreen');
+      const chatScreen = getEl('chatScreen');
+      const messagesContainer = getEl('messagesContainer');
+      const messageInput = getEl('messageInput');
+      const sendBtn = getEl('sendBtn');
+      const onlineCount = getEl('onlineCount');
+      const connectionStatus = getEl('connectionStatus');
+      const rightPanels = getEl('rightPanels');
+      const togglePanelBtn = getEl('togglePanelBtn');
+      const adminModal = getEl('adminModal');
+      const roleListDiv = getEl('roleList');
+      const toast = getEl('toast');
 
       let currentUser = null;
       let isAdmin = false;
@@ -268,33 +268,41 @@
       let gestureBuf = [], gestureTimer = null;
 
       function showToast(msg, d=2200) {
+        if (!toast) return;
         toast.textContent = msg; toast.classList.add('show');
         clearTimeout(toast._timeout);
         toast._timeout = setTimeout(() => toast.classList.remove('show'), d);
       }
-      function getUsers() { try { return JSON.parse(localStorage.getItem(STORAGE_USERS))||{}; } catch { return {}; } }
-      function saveUsers(u) { localStorage.setItem(STORAGE_USERS, JSON.stringify(u)); }
-      function loadCurrentUser() { try { return JSON.parse(localStorage.getItem(STORAGE_CURRENT)); } catch { return null; } }
-      function saveCurrentUser(u) { localStorage.setItem(STORAGE_CURRENT, JSON.stringify(u)); }
-      function loadAdminConfig() { try { const c = JSON.parse(localStorage.getItem(STORAGE_ADMIN)); if (c) adminConfig = c; } catch {} }
-      function saveAdminConfig() { localStorage.setItem(STORAGE_ADMIN, JSON.stringify(adminConfig)); }
-      function loadMyRole() { try { return JSON.parse(localStorage.getItem(STORAGE_MY_ROLE)); } catch { return null; } }
-      function saveMyRole(r) { localStorage.setItem(STORAGE_MY_ROLE, JSON.stringify(r)); }
+
+      function getUsers() { try { return JSON.parse(localStorage.getItem('waifu_v4_users'))||{}; } catch { return {}; } }
+      function saveUsers(u) { localStorage.setItem('waifu_v4_users', JSON.stringify(u)); }
+      function loadCurrentUser() { try { return JSON.parse(localStorage.getItem('waifu_v4_current')); } catch { return null; } }
+      function saveCurrentUser(u) { localStorage.setItem('waifu_v4_current', JSON.stringify(u)); }
+      function loadAdminConfig() { try { const c = JSON.parse(localStorage.getItem('waifu_v4_admin')); if (c) adminConfig = c; } catch {} }
+      function saveAdminConfig() { localStorage.setItem('waifu_v4_admin', JSON.stringify(adminConfig)); }
+      function loadMyRole() { try { return JSON.parse(localStorage.getItem('waifu_v4_my_role')); } catch { return null; } }
+      function saveMyRole(r) { localStorage.setItem('waifu_v4_my_role', JSON.stringify(r)); }
+
       function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
       function scrollBottom(instant) {
+        if (!messagesContainer) return;
         if (instant) messagesContainer.scrollTop = messagesContainer.scrollHeight;
         else requestAnimationFrame(() => { messagesContainer.scrollTop = messagesContainer.scrollHeight; });
       }
-      function nearBottom() { return messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 90; }
 
-      function setConnected(v) {
-        if (connectionStatus) {
-          connectionStatus.textContent = v ? '🟢 已连接' : '🔴 未连接';
-          connectionStatus.className = 'connection-status ' + (v ? 'online' : 'offline');
-        }
+      function nearBottom() {
+        if (!messagesContainer) return false;
+        return messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 90;
       }
 
-      // ============ 初始化 ============
+      function setConnected(v) {
+        if (!connectionStatus) return;
+        connectionStatus.textContent = v ? '🟢 已连接' : '🔴 未连接';
+        connectionStatus.className = 'connection-status ' + (v ? 'online' : 'offline');
+      }
+
+      // ============ Supabase 初始化 ============
       async function initSupabase() {
         try {
           supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -307,11 +315,12 @@
         } catch (e) {
           console.error('初始化失败:', e);
           setConnected(false);
-          roleListDiv.innerHTML = '<span style="color:red;">连接失败，请刷新</span>';
+          if (roleListDiv) roleListDiv.innerHTML = '<span style="color:red;">连接失败，请刷新</span>';
         }
       }
 
       async function loadRoles() {
+        if (!supabase) return;
         try {
           const { data, error } = await supabase.from('roles').select('*');
           if (error) throw error;
@@ -320,7 +329,7 @@
           updateRoleListUI();
         } catch (e) {
           console.error('加载角色失败:', e);
-          roleListDiv.innerHTML = '<span style="color:red;">加载失败</span>';
+          if (roleListDiv) roleListDiv.innerHTML = '<span style="color:red;">加载失败</span>';
         }
       }
 
@@ -333,37 +342,47 @@
       }
 
       async function saveRole(name, persona) {
-        if (!name || !persona || !currentUser) return;
+        if (!supabase) {
+          showToast('系统未就绪，请稍后重试');
+          return;
+        }
+        if (!name || !persona || !currentUser) {
+          showToast('请填写完整信息');
+          return;
+        }
         try {
-          await supabase.from('roles').upsert({
+          const { error } = await supabase.from('roles').upsert({
             name, owner: currentUser.username, persona, updated_at: Date.now()
           }, { onConflict: 'name' });
+          if (error) throw error;
           saveMyRole({ name, persona });
           showToast('✅ 角色已保存');
         } catch (e) {
-          console.error(e);
-          showToast('保存失败');
+          console.error('保存角色失败:', e);
+          showToast('保存失败: ' + (e.message || '未知错误'));
         }
       }
 
       function updateRoleListUI() {
+        if (!roleListDiv) return;
         const names = Object.keys(allRoles);
-        let html = '';
         if (names.length === 0) {
-          html = '<span style="color:var(--text-secondary);">暂无AI角色</span>';
+          roleListDiv.innerHTML = '<span style="color:var(--text-secondary);">暂无AI角色</span>';
         } else {
+          let html = '';
           names.forEach(name => {
             const r = allRoles[name];
             html += `<div class="role-list-item">
               <span><strong>${escapeHtml(name)}</strong> <span style="font-size:0.65rem;color:var(--text-secondary);">by ${escapeHtml(r.owner)}</span></span>
-              <button class="call-btn" onclick="document.getElementById('messageInput').value+=' @${escapeHtml(name)} '; document.getElementById('messageInput').focus();">召唤</button>
+              <button class="call-btn" onclick="(function(){var el=document.getElementById('messageInput');if(el){el.value+=' @${escapeHtml(name).replace(/'/g, "\\'")} ';el.focus();}})()">召唤</button>
             </div>`;
           });
+          roleListDiv.innerHTML = html;
         }
-        roleListDiv.innerHTML = html;
       }
 
       async function loadMessages() {
+        if (!supabase) return;
         try {
           const { data, error } = await supabase.from('messages').select('*').eq('room_id', ROOM_ID).order('timestamp', { ascending: true }).limit(200);
           if (error) throw error;
@@ -390,14 +409,14 @@
       }
 
       async function sendMsg(text, type='user', extra={}) {
-        if (!supabase) return;
+        if (!supabase || !currentUser) return;
         try {
           await supabase.from('messages').insert([{
             room_id: ROOM_ID, sender: currentUser.username, text, type, timestamp: Date.now(),
             role_owner: extra.roleOwner || null
           }]);
         } catch (e) {
-          console.error(e);
+          console.error('发送失败:', e);
         }
       }
 
@@ -424,7 +443,8 @@
         const url = adminConfig.baseUrl.replace(/\/+$/, '') + '/chat/completions';
         try {
           const res = await fetch(url, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminConfig.apiKey}` },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminConfig.apiKey}` },
             body: JSON.stringify({ model: adminConfig.model, messages: [{ role: 'system', content: persona }, { role: 'user', content: userMsg }], temperature: 0.9, max_tokens: 300 })
           });
           if (!res.ok) return null;
@@ -434,6 +454,7 @@
       }
 
       function renderMessages() {
+        if (!messagesContainer) return;
         const wasNear = nearBottom();
         const msgs = Array.from(messageCache.values()).filter(m => m.type==='user'||m.type==='ai').sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
         let html = '';
@@ -454,23 +475,28 @@
       function startPresence() {
         setInterval(async () => {
           if (!supabase || !currentUser) return;
-          await supabase.from('presences').upsert({ username: currentUser.username, last_seen: Date.now() }, { onConflict: 'username' });
+          try { await supabase.from('presences').upsert({ username: currentUser.username, last_seen: Date.now() }, { onConflict: 'username' }); } catch {}
         }, 8000);
         setInterval(async () => {
-          if (!supabase) return;
-          const { data } = await supabase.from('presences').select('username').gte('last_seen', Date.now()-15000);
-          if (onlineCount) onlineCount.textContent = `🟢 ${data?.length||1} 在线`;
+          if (!supabase || !onlineCount) return;
+          try {
+            const { data } = await supabase.from('presences').select('username').gte('last_seen', Date.now()-15000);
+            onlineCount.textContent = `🟢 ${data?.length||1} 在线`;
+          } catch {}
         }, 10000);
       }
 
+      // ============ 登录/注册 ============
       function login(u, p) {
         const users = getUsers();
         if (!users[u]) return '用户不存在';
         if (users[u] !== p) return '密码错误';
         currentUser = { username: u, password: p };
         saveCurrentUser(currentUser);
-        afterLogin(); return null;
+        afterLogin();
+        return null;
       }
+
       function register(u, p) {
         if (!u||!p) return '不能为空';
         const users = getUsers();
@@ -478,87 +504,90 @@
         users[u] = p; saveUsers(users);
         currentUser = { username: u, password: p };
         saveCurrentUser(currentUser);
-        afterLogin(); return null;
+        afterLogin();
+        return null;
       }
+
       function afterLogin() {
         authScreen.classList.remove('active');
         chatScreen.classList.add('active');
         loadAdminConfig();
         isAdmin = !!adminConfig.apiKey;
         const r = loadMyRole();
-        if (r) { 
-          const nameEl = $('#myRoleName');
-          const personaEl = $('#myRolePersona');
-          if (nameEl) nameEl.value = r.name || '';
-          if (personaEl) personaEl.value = r.persona || '';
-        }
+        const nameEl = getEl('myRoleName');
+        const personaEl = getEl('myRolePersona');
+        if (r && nameEl) nameEl.value = r.name || '';
+        if (r && personaEl) personaEl.value = r.persona || '';
         initSupabase();
         if (togglePanelBtn) togglePanelBtn.style.display = window.innerWidth <= 768 ? 'block' : 'none';
       }
+
       function logout() {
         currentUser=null; isAdmin=false;
-        localStorage.removeItem(STORAGE_CURRENT);
+        localStorage.removeItem('waifu_v4_current');
         chatScreen.classList.remove('active'); authScreen.classList.add('active');
-        messageCache.clear(); allRoles={}; messagesContainer.innerHTML='';
+        messageCache.clear(); allRoles={};
+        if (messagesContainer) messagesContainer.innerHTML='';
         if (channel && supabase) supabase.removeChannel(channel);
         if (roleChannel && supabase) supabase.removeChannel(roleChannel);
         supabase=null;
       }
 
-      // 手势
-      const topBarEl = document.getElementById('topBar');
+      // ============ 手势 ============
+      const topBarEl = getEl('topBar');
       if (topBarEl) {
         topBarEl.addEventListener('mousedown', (e) => {
           e.preventDefault();
           if (e.button===0) gestureBuf.push('left');
           else if (e.button===2) gestureBuf.push('right');
           else return;
-          clearTimeout(gestureTimer); gestureTimer = setTimeout(()=>{gestureBuf=[];},1500);
-          if (gestureBuf.length >= 6) {
-            if (gestureBuf.slice(-6).join(',')===ADMIN_GESTURE.join(',')) { gestureBuf=[]; openAdmin(); }
+          clearTimeout(gestureTimer);
+          gestureTimer = setTimeout(()=>{gestureBuf=[];},1500);
+          if (gestureBuf.length >= 6 && gestureBuf.slice(-6).join(',')===ADMIN_GESTURE.join(',')) {
+            gestureBuf=[];
+            loadAdminConfig();
+            const apiKeyEl = getEl('adminApiKey');
+            const baseUrlEl = getEl('adminBaseUrl');
+            const modelManualEl = getEl('adminModelManual');
+            const modelSelectEl = getEl('adminModelSelect');
+            if (apiKeyEl) apiKeyEl.value = adminConfig.apiKey;
+            if (baseUrlEl) baseUrlEl.value = adminConfig.baseUrl;
+            if (modelManualEl) modelManualEl.value = adminConfig.model;
+            if (modelSelectEl) modelSelectEl.innerHTML = `<option>${adminConfig.model}</option>`;
+            adminModal.classList.remove('hidden');
           }
         });
         topBarEl.addEventListener('contextmenu', e=>e.preventDefault());
       }
 
-      function openAdmin() {
-        loadAdminConfig();
-        const apiKeyEl = $('#adminApiKey');
-        const baseUrlEl = $('#adminBaseUrl');
-        const modelManualEl = $('#adminModelManual');
-        const modelSelectEl = $('#adminModelSelect');
-        if (apiKeyEl) apiKeyEl.value = adminConfig.apiKey;
-        if (baseUrlEl) baseUrlEl.value = adminConfig.baseUrl;
-        if (modelManualEl) modelManualEl.value = adminConfig.model;
-        if (modelSelectEl) modelSelectEl.innerHTML = `<option>${adminConfig.model}</option>`;
-        adminModal.classList.remove('hidden');
-      }
-
-      // 事件绑定
-      document.getElementById('loginBtn')?.addEventListener('click', ()=>{
-        const err = login($('#usernameInput')?.value?.trim()||'', $('#passwordInput')?.value||'');
-        if (err) { const el = $('#authError'); if (el) el.textContent = err; }
+      // ============ 事件绑定 ============
+      getEl('loginBtn')?.addEventListener('click', ()=>{
+        const err = login(getEl('usernameInput')?.value?.trim()||'', getEl('passwordInput')?.value||'');
+        const authErr = getEl('authError');
+        if (err && authErr) authErr.textContent = err;
+        else if (authErr) authErr.textContent = '';
       });
-      document.getElementById('registerBtn')?.addEventListener('click', ()=>{
-        const err = register($('#usernameInput')?.value?.trim()||'', $('#passwordInput')?.value||'');
-        if (err) { const el = $('#authError'); if (el) el.textContent = err; }
+      getEl('registerBtn')?.addEventListener('click', ()=>{
+        const err = register(getEl('usernameInput')?.value?.trim()||'', getEl('passwordInput')?.value||'');
+        const authErr = getEl('authError');
+        if (err && authErr) authErr.textContent = err;
+        else if (authErr) authErr.textContent = '';
       });
-      document.getElementById('toggleToRegister')?.addEventListener('click', function(){
-        const h2 = document.querySelector('#authScreen h2');
-        const loginBtn = document.getElementById('loginBtn');
-        const registerBtn = document.getElementById('registerBtn');
+      getEl('toggleToRegister')?.addEventListener('click', function(){
+        const h2 = qs('#authScreen h2');
+        const loginBtn = getEl('loginBtn');
+        const registerBtn = getEl('registerBtn');
         if (h2) h2.textContent='📝 注册账号';
         if (loginBtn) loginBtn.style.display='none';
         if (registerBtn) registerBtn.style.display='block';
-        const p = document.querySelector('#authScreen .link-text')?.parentNode;
+        const p = qs('#authScreen .link-text')?.parentNode;
         if (p) p.innerHTML='已有账号？<span class="link-text" id="toggleToLogin">立即登录</span>';
-        document.getElementById('toggleToLogin')?.addEventListener('click', ()=>{
-          const h2b = document.querySelector('#authScreen h2');
-          if (h2b) h2b.textContent='💖 AI老婆聊天室';
+        getEl('toggleToLogin')?.addEventListener('click', function(){
+          if (h2) h2.textContent='💖 AI老婆聊天室';
           if (loginBtn) loginBtn.style.display='block';
           if (registerBtn) registerBtn.style.display='none';
           if (p) p.innerHTML='没有账号？<span class="link-text" id="toggleToRegister">立即注册</span>';
-          document.getElementById('toggleToRegister')?.addEventListener('click', arguments.callee);
+          getEl('toggleToRegister')?.addEventListener('click', arguments.callee);
         });
       });
 
@@ -568,36 +597,37 @@
         if (messageInput) messageInput.value='';
         sendMsg(t, 'user');
       });
-      messageInput?.addEventListener('keydown', e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault(); sendBtn?.click();} });
-
-      togglePanelBtn?.addEventListener('click', ()=> rightPanels?.classList.toggle('open'));
-      document.getElementById('logoutBtn')?.addEventListener('click', logout);
-
-      document.getElementById('saveRoleBtn')?.addEventListener('click', ()=>{
-        const name = $('#myRoleName')?.value?.trim();
-        const persona = $('#myRolePersona')?.value?.trim();
-        if (!name||!persona) { showToast('请填写完整'); return; }
-        saveRole(name, persona);
-        rightPanels?.classList.add('open');
+      messageInput?.addEventListener('keydown', e=>{
+        if (e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendBtn?.click(); }
       });
 
-      document.getElementById('fetchModelsBtn')?.addEventListener('click', async ()=>{
-        const key = $('#adminApiKey')?.value?.trim();
-        const url = $('#adminBaseUrl')?.value?.trim()?.replace(/\/+$/,'');
+      togglePanelBtn?.addEventListener('click', ()=> rightPanels?.classList.toggle('open'));
+      getEl('logoutBtn')?.addEventListener('click', logout);
+
+      getEl('saveRoleBtn')?.addEventListener('click', ()=>{
+        const name = getEl('myRoleName')?.value?.trim();
+        const persona = getEl('myRolePersona')?.value?.trim();
+        if (!name||!persona) { showToast('请填写完整'); return; }
+        saveRole(name, persona);
+      });
+
+      getEl('fetchModelsBtn')?.addEventListener('click', async ()=>{
+        const key = getEl('adminApiKey')?.value?.trim();
+        const url = getEl('adminBaseUrl')?.value?.trim()?.replace(/\/+$/,'');
         if (!key||!url) { showToast('请填写Key和URL'); return; }
         try {
           const res = await fetch(`${url}/models`, { headers: { Authorization: `Bearer ${key}` } });
           const data = await res.json();
           const models = data.data||[];
-          const sel = $('#adminModelSelect');
+          const sel = getEl('adminModelSelect');
           if (sel) sel.innerHTML = models.map(m=>`<option>${m.id}</option>`).join('');
           showToast(`获取 ${models.length} 个模型`);
         } catch(e) { showToast('获取失败'); }
       });
-      document.getElementById('saveAdminBtn')?.addEventListener('click', ()=>{
-        const key = $('#adminApiKey')?.value?.trim();
-        const url = ($('#adminBaseUrl')?.value?.trim()||DEEPSEEK_BASE).replace(/\/+$/,'');
-        const model = $('#adminModelSelect')?.value||$('#adminModelManual')?.value?.trim();
+      getEl('saveAdminBtn')?.addEventListener('click', ()=>{
+        const key = getEl('adminApiKey')?.value?.trim();
+        const url = (getEl('adminBaseUrl')?.value?.trim()||DEEPSEEK_BASE).replace(/\/+$/,'');
+        const model = getEl('adminModelSelect')?.value||getEl('adminModelManual')?.value?.trim();
         if (!key||!model) { showToast('请填写完整'); return; }
         adminConfig = { apiKey: key, baseUrl: url, model };
         saveAdminConfig();
@@ -605,14 +635,16 @@
         adminModal.classList.add('hidden');
         showToast('👑 管理员已启动');
       });
-      document.getElementById('closeAdminBtn')?.addEventListener('click', ()=> adminModal.classList.add('hidden'));
+      getEl('closeAdminBtn')?.addEventListener('click', ()=> adminModal.classList.add('hidden'));
 
       // 自动登录
       const saved = loadCurrentUser();
       if (saved?.username && getUsers()[saved.username]===saved.password) {
         currentUser = saved;
         afterLogin();
-      } else authScreen.classList.add('active');
+      } else {
+        authScreen.classList.add('active');
+      }
     })();
   </script>
 </body>
