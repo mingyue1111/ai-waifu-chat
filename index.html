@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-  <title>AI老婆聊天室 · 全员同步</title>
+  <title>AI老婆聊天室 · 终极版</title>
   <style>
     :root {
       --bg: #1a1d23;
@@ -283,9 +283,10 @@
       let adminConfig = { apiKey: '', baseUrl: DEEPSEEK_BASE, model: DEEPSEEK_MODEL };
       let supabase = null;
       let messageCache = new Map();
-      let allRoles = {};
+      let allRoles = {}; // name -> { owner, persona }
       let repliedMessages = new Set();
       let subscriptionChannel = null;
+      let roleSubscription = null;
 
       let gestureBuffer = [];
       let gestureTimer = null;
@@ -322,64 +323,82 @@
         }
       }
 
-      // 从消息历史中重建角色列表
-      async function rebuildRolesFromDB() {
+      // ============ 角色管理 ============
+      async function loadAllRoles() {
         if (!supabase) return;
-        const { data } = await supabase
-          .from('messages')
-          .select('text')
-          .eq('room_id', ROOM_ID)
-          .eq('type', 'role_register')
-          .order('timestamp', { ascending: false })
-          .limit(50);
+        const { data } = await supabase.from('roles').select('*');
         if (data) {
-          const newRoles = {};
-          data.forEach(msg => {
-            try {
-              const info = JSON.parse(msg.text);
-              if (info.name && info.persona && info.owner) {
-                // 只保留最新的角色信息
-                if (!newRoles[info.name]) {
-                  newRoles[info.name] = { owner: info.owner, persona: info.persona };
-                }
-              }
-            } catch(e) {}
-          });
-          allRoles = newRoles;
+          allRoles = {};
+          data.forEach(r => { allRoles[r.name] = { owner: r.owner, persona: r.persona }; });
           updateRoleListUI();
         }
       }
 
+      function subscribeToRoles() {
+        if (!supabase) return;
+        roleSubscription = supabase
+          .channel('roles-changes')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'roles' }, () => {
+            loadAllRoles();
+          })
+          .subscribe();
+      }
+
+      async function saveRoleToDB(name, persona) {
+        if (!supabase) return;
+        await supabase.from('roles').upsert({
+          name,
+          owner: currentUser.username,
+          persona,
+          updated_at: Date.now()
+        }, { onConflict: 'name' });
+      }
+
+      function registerRole(name, persona) {
+        saveRoleToDB(name, persona);
+        showToast('💖 AI角色已注册！@' + name + ' 可召唤');
+        sidebarRight.classList.remove('open');
+      }
+
+      function updateRoleListUI() {
+        const names = Object.keys(allRoles);
+        let html = '';
+        if (names.length === 0) {
+          html = '<span style="color:var(--text-secondary); font-size:0.8rem;">暂无角色，快去创建吧~</span>';
+        } else {
+          names.forEach(name => {
+            const role = allRoles[name];
+            html += `<div class="role-list-item">
+              <span>💖 @${escapeHtml(name)} <span style="font-size:0.65rem; color:var(--text-secondary);">by ${escapeHtml(role.owner)}</span></span>
+              <button class="btn-small" style="padding:2px 6px; font-size:0.65rem;" onclick="document.getElementById('messageInput').value+=' @${escapeHtml(name)} '; document.getElementById('messageInput').focus();">@召唤</button>
+            </div>`;
+          });
+        }
+        roleListDiv.innerHTML = html;
+      }
+
+      // ============ Supabase 初始化 ============
       function initSupabase() {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         updateConnectionState(true);
-        loadMessagesAndRoles();
+        loadAllRoles();
+        subscribeToRoles();
+        loadMessages();
         subscribeToMessages();
         startPresenceHeartbeat();
         startPresenceCounter();
-        // 每30秒全量刷新一次角色榜单，防止遗漏
-        setInterval(rebuildRolesFromDB, 30000);
       }
 
-      async function loadMessagesAndRoles() {
+      async function loadMessages() {
         const { data } = await supabase
           .from('messages')
           .select('*')
           .eq('room_id', ROOM_ID)
           .order('timestamp', { ascending: true })
-          .limit(300);
+          .limit(200);
         if (data) {
-          data.forEach(msg => {
-            messageCache.set(msg.id.toString(), msg);
-            if (msg.type === 'role_register') {
-              try {
-                const roleInfo = JSON.parse(msg.text);
-                allRoles[roleInfo.name] = { owner: roleInfo.owner, persona: roleInfo.persona };
-              } catch(e) {}
-            }
-          });
+          data.forEach(msg => messageCache.set(msg.id.toString(), msg));
           renderMessages();
-          updateRoleListUI();
           scrollToBottom(true);
         }
       }
@@ -393,14 +412,6 @@
               const msg = payload.new;
               if (!messageCache.has(msg.id.toString())) {
                 messageCache.set(msg.id.toString(), msg);
-                // 处理角色注册消息
-                if (msg.type === 'role_register') {
-                  try {
-                    const roleInfo = JSON.parse(msg.text);
-                    allRoles[roleInfo.name] = { owner: roleInfo.owner, persona: roleInfo.persona };
-                    updateRoleListUI();
-                  } catch(e) {}
-                }
                 renderMessages();
                 if (isAdmin && adminConfig.apiKey && msg.type === 'user') {
                   handleAIRequest(msg, msg.id.toString());
@@ -421,22 +432,7 @@
           timestamp: msgObj.timestamp,
           role_owner: msgObj.roleOwner || null
         }]);
-        if (error) {
-          console.error('发送失败:', error);
-          showToast('消息发送失败：' + error.message);
-        }
-      }
-
-      function registerRole(name, persona) {
-        if (!supabase) return;
-        allRoles[name] = { owner: currentUser.username, persona };
-        updateRoleListUI();
-        publishMessage({
-          sender: currentUser.username,
-          text: JSON.stringify({ name, persona, owner: currentUser.username }),
-          type: 'role_register',
-          timestamp: Date.now()
-        });
+        if (error) console.error('发送失败:', error);
       }
 
       function startPresenceHeartbeat() {
@@ -461,6 +457,7 @@
         }, 10000);
       }
 
+      // ============ AI 处理 ============
       function handleAIRequest(msg, msgKey) {
         if (msg.type !== 'user') return;
         const text = msg.text || '';
@@ -534,22 +531,7 @@
         if (wasNearBottom) scrollToBottom(true);
       }
 
-      function updateRoleListUI() {
-        const names = Object.keys(allRoles);
-        let html = '';
-        if (names.length === 0) {
-          html = '<span style="color:var(--text-secondary); font-size:0.8rem;">暂无角色，快去创建吧~</span>';
-        } else {
-          names.forEach(name => {
-            html += `<div class="role-list-item">
-              <span>💖 @${escapeHtml(name)} <span style="font-size:0.65rem; color:var(--text-secondary);">by ${escapeHtml(allRoles[name].owner)}</span></span>
-              <button class="btn-small" style="padding:2px 6px; font-size:0.65rem;" onclick="document.getElementById('messageInput').value+=' @${escapeHtml(name)} '; document.getElementById('messageInput').focus();">@召唤</button>
-            </div>`;
-          });
-        }
-        roleListDiv.innerHTML = html;
-      }
-
+      // ============ 用户操作 ============
       async function sendMessage() {
         const text = messageInput.value.trim();
         if (!text || !currentUser) return;
@@ -602,9 +584,11 @@
         allRoles = {};
         messagesContainer.innerHTML = '';
         if (subscriptionChannel) supabase.removeChannel(subscriptionChannel);
+        if (roleSubscription) supabase.removeChannel(roleSubscription);
         supabase = null;
       }
 
+      // ============ 手势 & 事件 ============
       function setupGestureDetection() {
         topBar.addEventListener('mousedown', (e) => {
           e.preventDefault();
@@ -674,8 +658,6 @@
         if (!name || !persona) { showToast('请填写角色名字和人设'); return; }
         saveMyRole({ name, persona });
         registerRole(name, persona);
-        showToast('💖 AI角色已注册！@' + name + ' 可召唤');
-        sidebarRight.classList.remove('open');
       });
 
       $('#fetchModelsBtn').addEventListener('click', async () => {
