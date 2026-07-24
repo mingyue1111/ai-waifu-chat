@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-  <title>AI老婆聊天室 · 全员互动</title>
+  <title>AI老婆聊天室 · 全员同步</title>
   <style>
     :root {
       --bg: #1a1d23;
@@ -283,7 +283,7 @@
       let adminConfig = { apiKey: '', baseUrl: DEEPSEEK_BASE, model: DEEPSEEK_MODEL };
       let supabase = null;
       let messageCache = new Map();
-      let allRoles = {}; // { roleName: { owner, persona } }
+      let allRoles = {};
       let repliedMessages = new Set();
       let subscriptionChannel = null;
 
@@ -322,6 +322,34 @@
         }
       }
 
+      // 从消息历史中重建角色列表
+      async function rebuildRolesFromDB() {
+        if (!supabase) return;
+        const { data } = await supabase
+          .from('messages')
+          .select('text')
+          .eq('room_id', ROOM_ID)
+          .eq('type', 'role_register')
+          .order('timestamp', { ascending: false })
+          .limit(50);
+        if (data) {
+          const newRoles = {};
+          data.forEach(msg => {
+            try {
+              const info = JSON.parse(msg.text);
+              if (info.name && info.persona && info.owner) {
+                // 只保留最新的角色信息
+                if (!newRoles[info.name]) {
+                  newRoles[info.name] = { owner: info.owner, persona: info.persona };
+                }
+              }
+            } catch(e) {}
+          });
+          allRoles = newRoles;
+          updateRoleListUI();
+        }
+      }
+
       function initSupabase() {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         updateConnectionState(true);
@@ -329,6 +357,8 @@
         subscribeToMessages();
         startPresenceHeartbeat();
         startPresenceCounter();
+        // 每30秒全量刷新一次角色榜单，防止遗漏
+        setInterval(rebuildRolesFromDB, 30000);
       }
 
       async function loadMessagesAndRoles() {
@@ -363,7 +393,7 @@
               const msg = payload.new;
               if (!messageCache.has(msg.id.toString())) {
                 messageCache.set(msg.id.toString(), msg);
-                // 处理角色注册
+                // 处理角色注册消息
                 if (msg.type === 'role_register') {
                   try {
                     const roleInfo = JSON.parse(msg.text);
@@ -399,7 +429,6 @@
 
       function registerRole(name, persona) {
         if (!supabase) return;
-        // 立即更新本地 allRoles，确保自己也能看到
         allRoles[name] = { owner: currentUser.username, persona };
         updateRoleListUI();
         publishMessage({
@@ -561,8 +590,6 @@
           $('#myRolePersona').value = role.persona || '';
         }
         initSupabase();
-        renderMessages();
-        scrollToBottom(true);
       }
       function logout() {
         currentUser = null;
